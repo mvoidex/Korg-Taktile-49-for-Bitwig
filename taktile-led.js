@@ -4,7 +4,8 @@ var pendingLedState = initArray(0, 128);
 function clearLEDs(cc)
 {
 	for (var cc = 0; cc < ledState.length; ++cc) {
-		setLED(cc, 0);
+		ledState[cc] = 0;
+		pendingLedState[cc] = 0;
 	}
 }
 
