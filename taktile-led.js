@@ -1,6 +1,11 @@
 var ledState = initArray(0, 128);
 var pendingLedState = initArray(0, 128);
 
+function isPadLED(cc)
+{
+	return withinRange(cc, 0x40, 0x4F);
+}
+
 function clearLEDs(cc)
 {
 	for (var cc = 0; cc < ledState.length; ++cc) {
@@ -17,7 +22,12 @@ function setLED(cc, on)
 function updateLED(cc)
 {
 	if (ledState[cc] != pendingLedState[cc]) {
-		sendChannelController(0xF, cc, pendingLedState[cc]);
+		if (isPadLED(cc)) {
+			sendMidi(0x91, cc, pendingLedState[cc]);
+		}
+		else {
+			sendChannelController(0xF, cc, pendingLedState[cc]);
+		}
 		ledState[cc] = pendingLedState[cc];
 	}
 }

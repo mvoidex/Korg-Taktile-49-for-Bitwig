@@ -258,6 +258,7 @@ function onMidi(midi, status, data1, data2)
 		if (padIndex < 4) { padIndex += 12; }
 		else if (padIndex >= 12) { padIndex -= 12; }
 		noteInput.sendRawMidiEvent(STATUS.NOTE_ON, drumPadBank.channelScrollPosition().get() + padIndex, val)
+		setLED(cc, true);
 		return;
 	}
 
@@ -269,6 +270,7 @@ function onMidi(midi, status, data1, data2)
 		if (padIndex < 4) { padIndex += 12; }
 		else if (padIndex >= 12) { padIndex -= 12; }
 		noteInput.sendRawMidiEvent(STATUS.NOTE_OFF, drumPadBank.channelScrollPosition().get() + padIndex, val);
+		setLED(cc, false);
 		return;
 	}
 
