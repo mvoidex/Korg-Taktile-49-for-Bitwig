@@ -61,7 +61,7 @@ Mixer Mode
 Buttons | Actions
 -- | --
 [KNOB n] | change n-th track's pan
-[SET]+[KNOB n] reset n-th track's pan
+[SET]+[KNOB n] | reset n-th track's pan
 [SLIDER n] | change n-th track's volume
 [SET]+[SLIDER n] | reset n-th track's volume
 [SOLO n] | toggle n-th track's solo
