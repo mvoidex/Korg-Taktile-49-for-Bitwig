@@ -6,7 +6,7 @@ function isPadLED(cc)
 	return withinRange(cc, 0x40, 0x4F);
 }
 
-function clearLEDs(cc)
+function clearLEDs()
 {
 	for (var cc = 0; cc < ledState.length; ++cc) {
 		ledState[cc] = 0;
