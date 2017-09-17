@@ -16,7 +16,7 @@ function clearLEDs()
 
 function setLED(cc, on)
 {
-	pendingLedState[cc] = on ? 127 : 0;
+	pendingLedState[cc] = on;
 }
 
 function updateLED(cc)
@@ -47,4 +47,14 @@ function flushLEDs()
 	for (var cc = 0; cc < ledState.length; ++cc) {
 		updateLED(cc);
 	}
+}
+
+function mkRed()
+{
+	return 0x7F;
+}
+
+function mkGreen()
+{
+	return 0x01;
 }

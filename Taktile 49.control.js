@@ -20,6 +20,8 @@ host.addDeviceNameBasedDiscoveryPair(
 var nativeMode = true;
 var mixerMode = false; // only in native mode
 var setPressed = false;
+var cyclePressed = false;
+var cycleAltered = false; // cycle used as alt button (scene selection)
 // prev/next track is pressed, used to switch mixer mode (native only)
 var prevTrackPressed = false;
 var nextTrackPressed = false;
@@ -42,6 +44,7 @@ function leaveNativeMode() {
 function switchNativeMode() { nativeMode ? leaveNativeMode() : enterNativeMode(); }
 function switchMixerMode() {
 	mixerMode = !mixerMode;
+	initializeLEDs();
 	displayMessage(mixerMode ? "mixer       Bitwig" : "control     Bitwig");
 	host.showPopupNotification(mixerMode ? "Mode: mixer" : "Mode: control");
 }
@@ -49,7 +52,7 @@ function switchMixerMode() {
 function init() {
 	transport = host.createTransport();
 	application = host.createApplication();
-	trackBank = host.createTrackBank(8, 1, 0);
+	trackBank = host.createTrackBank(8, 1, 1);
 	cursorTrack = host.createCursorTrack(2, 0);
 	cursorDecive = cursorTrack.createCursorDevice("Primary", "Primary", 8, CursorDeviceFollowMode.FOLLOW_SELECTION);
 	drumPadBank = cursorDecive.createDrumPadBank(16);
@@ -59,29 +62,50 @@ function init() {
 
 	drumPadBank.channelScrollPosition().addValueObserver(function (on) {
 		for (var p = CC.NATIVE.MUTE1; p <= CC.NATIVE.MUTE8; ++p) {
-			setLED(p, false)
+			setLED(p, 0)
 		}
-		setLED(CC.NATIVE.MUTE1 + parseInt(on / 16), true);
+		setLED(CC.NATIVE.MUTE1 + parseInt(on / 16), 127);
 	});
+
+	for (var p = 0; p < 8; ++p) {
+		trackBank.getChannel(p).exists().markInterested();
+		trackBank.getChannel(p).clipLauncherSlotBank().getItemAt(0).hasContent().markInterested();
+		trackBank.getChannel(p).clipLauncherSlotBank().getItemAt(0).isPlaying().markInterested();
+		trackBank.getChannel(p).clipLauncherSlotBank().getItemAt(0).isPlaybackQueued().markInterested();
+		trackBank.getChannel(p).clipLauncherSlotBank().getItemAt(0).isRecording().markInterested();
+		trackBank.getChannel(p).clipLauncherSlotBank().getItemAt(0).isRecordingQueued().markInterested();
+		trackBank.getChannel(p).isStopped().markInterested();
+
+		let idx = p;
+		trackBank.getChannel(p).clipLauncherSlotBank().addPlaybackStateObserver(function(slotIndex, state, queued) {
+			updateChannelLEDs(idx);
+		});
+		trackBank.getChannel(p).clipLauncherSlotBank().addHasContentObserver(function(slotIndex, has) {
+			updateChannelLEDs(idx);
+		})
+		trackBank.getChannel(p).isStopped().addValueObserver(function(stopped) {
+			updateChannelLEDs(idx);
+		})
+	}
 
 	remoteControlsPage.selectedPageIndex().addValueObserver(function (on) {
 		for (var p = CC.NATIVE.SOLO1; p <= CC.NATIVE.SOLO8; ++p) {
-			setLED(p, false)
+			setLED(p, 0)
 		}
-		setLED(CC.NATIVE.SOLO1 + on, true);
+		setLED(CC.NATIVE.SOLO1 + on, 127);
 	});
 
 	transport.isPlaying().addValueObserver(function(on) {
-		setLED(CC.NATIVE.PLAY, on);
-		setLED(CC.NATIVE.STOP, !on);
+		setLED(CC.NATIVE.PLAY, on ? 127 : 0);
+		setLED(CC.NATIVE.STOP, !on ? 127 : 0);
 	});
 
 	transport.isArrangerLoopEnabled().addValueObserver(function(on) {
-		setLED(CC.NATIVE.CYCLE, on);
+		setLED(CC.NATIVE.CYCLE, on ? 127 : 0);
 	});
 
 	transport.isArrangerRecordEnabled().addValueObserver(function(on) {
-		setLED(CC.NATIVE.REC, on);
+		setLED(CC.NATIVE.REC, on ? 127 : 0);
 	});
 
 	host.getMidiInPort(0).setMidiCallback(function (status, cc, val) { onMidi(0, status, cc, val); });
@@ -97,6 +121,40 @@ function init() {
 	displayMessage("control     Bitwig");
 
 	// host.showPopupNotification("Taktile 49 initialized!");
+}
+
+function showChannelLEDs()
+{
+	for (var p = 0; p < 8; ++p) {
+		updateChannelLEDs(p);
+	}
+}
+
+function updateChannelLEDs(idx)
+{
+	if (!mixerMode || !nativeMode) {
+		return;
+	}
+
+	let channel = trackBank.getChannel(idx);
+	let slot = channel.clipLauncherSlotBank().getItemAt(0);
+
+	color = 0;
+	if (slot.isPlaying().get() || slot.isPlaybackQueued().get()) {
+		color = mkGreen();
+	}
+	else if (slot.isRecording().get() || slot.isRecordingQueued().get()) {
+		color = mkRed();
+	}
+	else {
+		color = slot.hasContent().get() ? mkRed() : 0;
+	}
+
+	// if (idx < 4) { idx += 12; }
+	// else if (idx >= 12) { idx -= 12; }
+
+	setLED(CC.NATIVE.PAD1 + idx, color);
+	setLED(CC.NATIVE.PAD1 + 8 + idx, (channel.isStopped().get() || !channel.exists().get()) ? 0 : mkRed());
 }
 
 // Called when a short MIDI message is received on MIDI input port 0.
@@ -179,8 +237,14 @@ function onMidi(midi, status, data1, data2)
 		(midi == 1 && status == STATUS.NOTE_ON && cc == CC.MIDI1.CYCLE)
 	) {
 		if (val > 0) {
-			if (setPressed) { switchNativeMode(); }
-			else { transport.isArrangerLoopEnabled().toggle(); }
+			cyclePressed = true;
+		}
+		else {
+			cyclePressed = false;
+			if (!cycleAltered) {
+				if (setPressed) { switchNativeMode(); }
+				else { transport.isArrangerLoopEnabled().toggle(); }
+			}
 		}
 		return;
 	}
@@ -223,8 +287,14 @@ function onMidi(midi, status, data1, data2)
 		(midi == 1 && status == STATUS.NOTE_ON && cc == CC.MIDI1.PREV_MARKER)
 	) {
 		if (val > 0) {
-			if (setPressed) { cursorDecive.selectPrevious(); }
-			else { remoteControlsPage.selectPreviousPage(false); }
+			if (cyclePressed) {
+				cycleAltered = true;
+				trackBank.scrollScenesUp();
+			}
+			else {
+				if (setPressed) { cursorDecive.selectPrevious(); }
+				else { remoteControlsPage.selectPreviousPage(false); }
+			}
 		}
 		return;
 	}
@@ -235,8 +305,14 @@ function onMidi(midi, status, data1, data2)
 		(midi == 1 && status == STATUS.NOTE_ON && cc == CC.MIDI1.NEXT_MARKER)
 	) {
 		if (val > 0) {
-			if (setPressed) { cursorDecive.selectNext(); }
-			else { remoteControlsPage.selectNextPage(false); }
+			if (cyclePressed) {
+				cycleAltered = true;
+				trackBank.scrollScenesDown();
+			}
+			else {
+				if (setPressed) { cursorDecive.selectNext(); }
+				else { remoteControlsPage.selectNextPage(false); }
+			}
 		}
 		return;
 	}
@@ -252,25 +328,39 @@ function onMidi(midi, status, data1, data2)
 
 	// pad on (native mode)
 	if (
-		(midi == 0 && nativeMode && status == STATUS.NATIVE.PAD_NOTE_ON && withinRange(cc, CC.NATIVE.PAD1, CC.NATIVE.PAD16))
+		(midi == 0 && nativeMode && !mixerMode && status == STATUS.NATIVE.PAD_NOTE_ON && withinRange(cc, CC.NATIVE.PAD1, CC.NATIVE.PAD16))
 	) {
 		padIndex = cc - CC.NATIVE.PAD1;
 		if (padIndex < 4) { padIndex += 12; }
 		else if (padIndex >= 12) { padIndex -= 12; }
 		noteInput.sendRawMidiEvent(STATUS.NOTE_ON, drumPadBank.channelScrollPosition().get() + padIndex, val)
-		setLED(cc, true);
+		setLED(cc, 127);
 		return;
 	}
 
 	// pad off (native mode)
 	if (
-		(midi == 0 && nativeMode && status == STATUS.NATIVE.PAD_NOTE_OFF && withinRange(cc, CC.NATIVE.PAD1, CC.NATIVE.PAD16))
+		(midi == 0 && nativeMode && !mixerMode && status == STATUS.NATIVE.PAD_NOTE_OFF && withinRange(cc, CC.NATIVE.PAD1, CC.NATIVE.PAD16))
 	) {
 		padIndex = cc - CC.NATIVE.PAD1;
 		if (padIndex < 4) { padIndex += 12; }
 		else if (padIndex >= 12) { padIndex -= 12; }
 		noteInput.sendRawMidiEvent(STATUS.NOTE_OFF, drumPadBank.channelScrollPosition().get() + padIndex, val);
-		setLED(cc, false);
+		setLED(cc, 0);
+		return;
+	}
+
+	// pad on (native & mixer mode)
+	if (
+		(midi == 0 && nativeMode && mixerMode && status == STATUS.NATIVE.PAD_NOTE_ON && withinRange(cc, CC.NATIVE.PAD1, CC.NATIVE.PAD16))
+	) {
+		padIndex = cc - CC.NATIVE.PAD1;
+		if (padIndex < 8) {
+			trackBank.getChannel(padIndex).clipLauncherSlotBank().launch(0);
+		}
+		else {
+			trackBank.getChannel(padIndex - 8).clipLauncherSlotBank().stop();
+		}
 		return;
 	}
 
@@ -391,20 +481,22 @@ function initializeLEDs()
 	clearLEDs();
 
 	for (var p = CC.NATIVE.SOLO1; p <= CC.NATIVE.SOLO8; ++p) {
-		setLED(p, false);
+		setLED(p, 0);
 	}
-	setLED(CC.NATIVE.SOLO1 + remoteControlsPage.selectedPageIndex().get(), true);
+	setLED(CC.NATIVE.SOLO1 + remoteControlsPage.selectedPageIndex().get(), 127);
 
 	for (var p = CC.NATIVE.MUTE1; p <= CC.NATIVE.MUTE8; ++p) {
-		setLED(p, false)
+		setLED(p, 0)
 	}
-	setLED(CC.NATIVE.MUTE1 + parseInt(drumPadBank.channelScrollPosition().get() / 16), true);
+	setLED(CC.NATIVE.MUTE1 + parseInt(drumPadBank.channelScrollPosition().get() / 16), 127);
 
 	playing = transport.isPlaying().get();
-	setLED(CC.NATIVE.PLAY, playing);
-	setLED(CC.NATIVE.STOP, !playing);
-	setLED(CC.NATIVE.CYCLE, transport.isArrangerLoopEnabled().get());
-	setLED(CC.NATIVE.REC, transport.isArrangerRecordEnabled().get());
+	setLED(CC.NATIVE.PLAY, playing ? 127 : 0);
+	setLED(CC.NATIVE.STOP, !playing ? 127 : 0);
+	setLED(CC.NATIVE.CYCLE, transport.isArrangerLoopEnabled().get() ? 127 : 0);
+	setLED(CC.NATIVE.REC, transport.isArrangerRecordEnabled().get() ? 127 : 0);
+
+	showChannelLEDs();
 }
 
 function updateIndications()

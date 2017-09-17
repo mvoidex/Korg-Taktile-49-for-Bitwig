@@ -44,6 +44,8 @@ Buttons | Actions
 [SET]+[PREV TRACK] | scroll track bank up
 [SET]+[NEXT TRACK] | scroll track bank down
 [SET]+[PREV TRACK]+[NEXT TRACK] | toggle between Mixer Mode and Control Mode (Native Mode only)
+[CYCLE]+[PREV MARKER] | select previous scene
+[CYCLE]+[NEXT MARKER] | select next scene
 
 Control Mode
 ---
@@ -60,6 +62,8 @@ Mixer Mode
 
 Buttons | Actions
 -- | --
+[PAD 1-8] | start clip in scene
+[PAD 9-16] | stop clip in scene
 [KNOB n] | change n-th track's pan
 [SET]+[KNOB n] | reset n-th track's pan
 [SLIDER n] | change n-th track's volume
